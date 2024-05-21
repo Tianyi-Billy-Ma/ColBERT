@@ -26,6 +26,7 @@ class Searcher:
             print_memory_stats()
 
         initial_config = ColBERTConfig.from_existing(config, Run().config)
+        initial_config.total_visible_gpus = config.total_visible_gpus
 
         default_index_root = initial_config.index_root_
         index_root = index_root if index_root else default_index_root
