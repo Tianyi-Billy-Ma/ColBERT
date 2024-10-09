@@ -95,7 +95,9 @@ class ColBERT(BaseColBERT):
 
         scores = (
             D.float().unsqueeze(0) @ Q.float().permute(0, 2, 1).unsqueeze(1)
-        ).flatten(0, 1)  # query-major unsqueeze
+        ).flatten(
+            0, 1
+        )  # query-major unsqueeze
         scores = colbert_score_reduce(
             scores, D_mask.repeat(Q.size(0), 1, 1), self.colbert_config
         )
@@ -198,7 +200,9 @@ class ColBERT(BaseColBERT):
         # TODO: Organize the code below! Quite messy.
         scores = (
             D.float().unsqueeze(0) @ Q.float().permute(0, 2, 1).unsqueeze(1)
-        ).flatten(0, 1)  # query-major unsqueeze
+        ).flatten(
+            0, 1
+        )  # query-major unsqueeze
 
         scores = colbert_score_reduce(
             scores, D_mask.repeat(Q.size(0), 1, 1), self.colbert_config
@@ -292,6 +296,43 @@ class ColBERT(BaseColBERT):
             for d in input_ids.cpu().tolist()
         ]
         return mask
+
+
+class HGColBert(BaseColBERT, ColBERT):
+    def __init__(self, name="bert-base-uncased", colbert_config=None):
+        super().__init__(name, colbert_config)
+
+    def doc(self, input_ids, attention_mask, keep_dims=True):
+        assert keep_dims in [True, False, "return_mask"]
+
+        input_ids, attention_mask = (
+            input_ids.to(self.device),
+            attention_mask.to(self.device),
+        )
+        D = self.bert(input_ids, attention_mask=attention_mask)[0]
+        D = self.linear(D)
+
+        mask = (
+            torch.tensor(
+                self.mask(input_ids, skiplist=self.skiplist), device=self.device
+            )
+            .unsqueeze(2)
+            .float()
+        )
+        D = D * mask
+
+        D = torch.nn.functional.normalize(D, p=2, dim=2)
+        if self.use_gpu:
+            D = D.half()
+
+        if keep_dims is False:
+            D, mask = D.cpu(), mask.bool().cpu().squeeze(-1)
+            D = [d[mask[idx]] for idx, d in enumerate(D)]
+
+        elif keep_dims == "return_mask":
+            return D, mask.bool()
+
+        return D
 
 
 # TODO: In Query/DocTokenizer, use colbert.raw_tokenizer
